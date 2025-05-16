@@ -35,6 +35,8 @@ from telegram.ext import (
 from dotenv import load_dotenv
 import os
 
+from telegram import BotCommand
+
 load_dotenv()  # Load environment variables from .env file
 
 TOKEN = os.getenv("TOKEN")
@@ -50,6 +52,14 @@ if not AUTHORIZED_USERS_ID:
 
 if not SUPER_ADMINS_ID:
     raise ValueError("🚨 SUPER_ADMINS_ID is empty or missing in .env")
+
+
+async def set_commands(application):
+    commands = [
+        BotCommand("start", "Show main"),
+        BotCommand("scan", "Print IPs"),
+    ]
+    await application.bot.set_my_commands(commands)
 
 
 # First menu
@@ -125,11 +135,13 @@ async def all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Main entry point
 def main():
+    # import asyncio
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.ALL, all_messages))  # Capture any message
-
+    # asyncio.run(set_commands(app))
     print("🤖 Bot is running...")
     app.run_polling()
 
