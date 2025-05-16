@@ -1,0 +1,51 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+.pipenv/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and local runtime files
+*.log
+*.sqlite3
+*.db
+*.pid
+*.seed
+*.bak
+*.tmp
+
+# Env files
+.env
+.env.*
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# Docker
+docker-compose.override.yml
+
+# PyInstaller
+*.spec
+
+# Jupyter
+.ipynb_checkpoints
+
+# System folders
+node_modules/
