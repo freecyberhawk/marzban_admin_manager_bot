@@ -1,3 +1,5 @@
+![Marzban Admin Manager Bot](assets/banner.jpg)
+
 # 🤖 Marzban Admin Manager Bot
 
 A Telegram bot for managing admins and users on the Marzban VPN panel. It includes wallet management, subscription
