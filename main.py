@@ -21,6 +21,8 @@ Features:
 Wallet System:
 Each subscription or renewal deducts a specific amount (per GB) from the admin's wallet based on the price set by the superuser.
 """
+from asyncio import create_subprocess_shell
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram import ReplyKeyboardMarkup, KeyboardButton
@@ -34,6 +36,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 import os
+import jdatetime
 
 from telegram import BotCommand
 
@@ -56,30 +59,53 @@ if not SUPER_ADMINS_ID:
 
 async def set_commands(application):
     commands = [
-        BotCommand("start", "Show main"),
-        BotCommand("scan", "Print IPs"),
+        BotCommand("start", "شروع مجدد"),
+        BotCommand("create_subscription", "ساخت اشتراک"),
     ]
     await application.bot.set_my_commands(commands)
 
 
-# First menu
-def get_main_menu():
+# Main menu
+def get_main_menu(super_user: bool):
     keyboard = [
         [KeyboardButton("📦 ساخت اشتراک")],
-        [KeyboardButton("👥 مدیریت کاربران"), KeyboardButton("💰 موجودی کیف پول")],
+        [KeyboardButton("👥 مدیریت کاربران")]
     ]
+
+    if super_user:
+        keyboard[1].append(KeyboardButton("👮🏻‍♂️ مدیریت ادمین"))
+        keyboard.append([KeyboardButton("⚙️ تنظیمات پنل")])
+    else:
+        keyboard[1].append(KeyboardButton("💰 کیف پول من"))
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 
 # Second menu
-def get_second_menu():
-    keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="main_menu")]]
+def get_subscription_packets():
+    keyboard = [
+        [
+            InlineKeyboardButton("سه ماهه", callback_data="create_subscription_action_duration:3"),
+            InlineKeyboardButton("یک ماهه", callback_data="create_subscription_action_duration:1"),
+
+        ],
+        [
+            InlineKeyboardButton("شش ماهه", callback_data="create_subscription_action_duration:6")
+        ],
+        [
+            InlineKeyboardButton("دوره دلخواه", callback_data="create_subscription_action_duration:x")
+        ]
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 
 # Access control check
 def is_authorized(user_id: int) -> bool:
     return user_id in AUTHORIZED_USERS_ID
+
+
+def is_superuser(user_id: int) -> bool:
+    return user_id in SUPER_ADMINS_ID
 
 
 # /start command
@@ -100,9 +126,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔️ You are not authorized to use this bot.")
         return
 
+    now_jalali = jdatetime.datetime.now().strftime("%Y/%m/%d ⏰ %H:%M")
+
+    welcome_text = (
+        f" سلام، {full_name} خوش آمدید!\n\n"
+        f"{now_jalali}\n"
+        f"----\n"
+        f"کاربران فعال:\n"
+        f"{'12/52'} عدد\n"
+        f"موجودی کیف پول:\n"
+        f"{'123,000'} تومان\n\n"
+    )
     await update.message.reply_text(
-        f"✅ Welcome, {full_name}!\nYour ID: {user_id}",
-        reply_markup=get_main_menu()
+        welcome_text,
+        reply_markup=get_main_menu(is_superuser(user_id)),
     )
 
 
@@ -117,9 +154,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
     if query.data == "second_menu":
-        await query.edit_message_text("📋 You are in the second menu.", reply_markup=get_second_menu())
+        await query.edit_message_text("📋 You are in the second menu.", reply_markup=None)
+
     elif query.data == "main_menu":
-        await query.edit_message_text("🏠 Back to the main menu.", reply_markup=get_main_menu())
+        await query.edit_message_text("🏠 Back to the main menu.", reply_markup=None)
+
+    elif query.data.startswith("create_subscription_action_duration:"):
+        duration = query.data.split(":")[1]
+
+        if duration == "x":
+            await query.edit_message_text("لطفا تعداد ماه دلخواه را وارد کنید (حداکثر 12):")
+            context.user_data["awaiting_create_subscription_action_duration"] = True
+        else:
+            await query.edit_message_text(f"📦 ساخت اشتراک {duration} ماهه آغاز شد...")
+
+
+async def create_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await update.message.reply_text("⏳ دوره اشتراک را انتخاب کنید:", reply_markup=get_subscription_packets())
 
 
 # Catch all text messages
@@ -129,8 +180,31 @@ async def all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔️ You are not authorized to use this bot.")
         return
 
-    # Echo the message
-    await update.message.reply_text(f"You said: {update.message.text}", reply_markup=get_main_menu())
+    text = update.message.text
+
+    if context.user_data.get("awaiting_create_subscription_action_duration"):
+        if text.isdigit():
+            context.user_data["awaiting_create_subscription_action_duration"] = False
+            duration = int(text)
+            await update.message.reply_text(f"📦 ساخت اشتراک {duration} ماهه آغاز شد...")
+            # ادامه منطق ساخت اشتراک دلخواه
+        else:
+            await update.message.reply_text("❌ لطفا فقط عدد وارد کنید (به ماه):")
+        return
+
+    elif text == "📦 ساخت اشتراک":
+        await create_subscription(update, context)
+        return
+
+    elif text == "👥 مدیریت کاربران":
+        await update.message.reply_text("🧑‍💼 مدیریت کاربران", reply_markup=None)
+        return
+
+    elif text == "💰 موجودی کیف پول":
+        await update.message.reply_text("💳 موجودی کیف پول شما: (مقدار تستی)", reply_markup=None)
+        return
+
+    await update.message.reply_text(f"شما گفتید: {text}", reply_markup=None)
 
 
 # Main entry point
@@ -139,6 +213,7 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("create_subscription", create_subscription))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.ALL, all_messages))  # Capture any message
     # asyncio.run(set_commands(app))
