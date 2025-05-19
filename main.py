@@ -21,11 +21,8 @@ Features:
 Wallet System:
 Each subscription or renewal deducts a specific amount (per GB) from the admin's wallet based on the price set by the superuser.
 """
-from asyncio import create_subprocess_shell
-from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram import ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -39,6 +36,8 @@ import os
 import jdatetime
 
 from telegram import BotCommand
+
+from keyboards import get_main_menu, get_the_size_of_packets, get_the_duration_of_packets
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -66,34 +65,23 @@ async def set_commands(application):
 
 
 # Main menu
-def get_main_menu(super_user: bool):
-    keyboard = [
-        [KeyboardButton("📦 ساخت اشتراک")],
-        [KeyboardButton("👥 مدیریت کاربران")]
-    ]
 
-    if super_user:
-        keyboard[1].append(KeyboardButton("👮🏻‍♂️ مدیریت ادمین"))
-        keyboard.append([KeyboardButton("⚙️ تنظیمات پنل")])
-    else:
-        keyboard[1].append(KeyboardButton("💰 کیف پول من"))
-
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 
 # Second menu
-def get_subscription_packets():
+
+
+
+
+
+
+def get_final_confirm():
     keyboard = [
         [
-            InlineKeyboardButton("سه ماهه", callback_data="create_subscription_action_duration:3"),
-            InlineKeyboardButton("یک ماهه", callback_data="create_subscription_action_duration:1"),
-
+            InlineKeyboardButton("تایید نهایی", callback_data="create_subscription_action_confirm:ok")
         ],
         [
-            InlineKeyboardButton("شش ماهه", callback_data="create_subscription_action_duration:6")
-        ],
-        [
-            InlineKeyboardButton("دوره دلخواه", callback_data="create_subscription_action_duration:x")
+            InlineKeyboardButton("بازگشت", callback_data="create_subscription_action_confirm:back")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -153,24 +141,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await query.answer()
-    if query.data == "second_menu":
-        await query.edit_message_text("📋 You are in the second menu.", reply_markup=None)
 
-    elif query.data == "main_menu":
-        await query.edit_message_text("🏠 Back to the main menu.", reply_markup=None)
-
-    elif query.data.startswith("create_subscription_action_duration:"):
+    if query.data.startswith("create_subscription_action_duration:"):
         duration = query.data.split(":")[1]
+        context.user_data["buying__selected_duration"] = duration
 
         if duration == "x":
             await query.edit_message_text("لطفا تعداد ماه دلخواه را وارد کنید (حداکثر 12):")
             context.user_data["awaiting_create_subscription_action_duration"] = True
         else:
-            await query.edit_message_text(f"📦 ساخت اشتراک {duration} ماهه آغاز شد...")
+            await query.edit_message_text(f"💎 حجم مصرف اشتراک را انتخاب کنید:", reply_markup=get_the_size_of_packets())
+
+    elif query.data.startswith("create_subscription_action_size:"):
+        size = query.data.split(":")[1]
+        context.user_data["buying__selected_size"] = size
+
+        if size == "back":
+            await query.edit_message_text("⏳ دوره اشتراک را انتخاب کنید:",
+                                          reply_markup=get_the_duration_of_packets())
+        elif size == "x":
+            await query.edit_message_text("لطفا حجم دلخواه را به گیگابایت وارد کنید (حداکثر ۲۰۰ گیگ):")
+            context.user_data["awaiting_create_subscription_action_size"] = True
+        else:
+            cart_packet = (
+                f"مشخصات نهایی اشتراک\n"
+                f"دوره اشتراک: {context.user_data['buying__selected_duration']} ماهه\n"
+                f"حجم مصرف: {context.user_data['buying__selected_size']} گیگابایت\n"
+                f"مبلغ سفارش: 12,200 تومان\n"
+            )
+            await query.edit_message_text(cart_packet, reply_markup=get_final_confirm())
+
+    elif query.data.startswith("create_subscription_action_confirm:"):
+        status = query.data.split(":")[1]
+        if status == "ok":
+            await query.edit_message_text('OK', reply_markup=None)
+        else:
+            await query.edit_message_text(f"💎 حجم مصرف اشتراک را انتخاب کنید:", reply_markup=get_the_size_of_packets())
 
 
 async def create_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await update.message.reply_text("⏳ دوره اشتراک را انتخاب کنید:", reply_markup=get_subscription_packets())
+    return await update.message.reply_text("⏳ دوره اشتراک را انتخاب کنید:", reply_markup=get_the_duration_of_packets())
 
 
 # Catch all text messages
@@ -185,11 +195,27 @@ async def all_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("awaiting_create_subscription_action_duration"):
         if text.isdigit():
             context.user_data["awaiting_create_subscription_action_duration"] = False
-            duration = int(text)
-            await update.message.reply_text(f"📦 ساخت اشتراک {duration} ماهه آغاز شد...")
-            # ادامه منطق ساخت اشتراک دلخواه
+            duration = text
+            context.user_data["buying__selected_duration"] = duration
+            await update.message.reply_text(f"💎 حجم مصرف اشتراک را انتخاب کنید:", reply_markup=get_the_size_of_packets())
         else:
             await update.message.reply_text("❌ لطفا فقط عدد وارد کنید (به ماه):")
+        return
+
+    if context.user_data.get("awaiting_create_subscription_action_size"):
+        if text.isdigit():
+            context.user_data["awaiting_create_subscription_action_size"] = False
+            size = int(text)
+            context.user_data["buying__selected_size"] = size
+            cart_packet = (
+                f"مشخصات نهایی اشتراک\n"
+                f"دوره اشتراک: {context.user_data['buying__selected_duration']} ماهه\n"
+                f"حجم مصرف: {context.user_data['buying__selected_size']} گیگابایت\n"
+                f"مبلغ سفارش: 12,200 تومان\n"
+            )
+            await update.message.reply_text(cart_packet, reply_markup=get_final_confirm())
+        else:
+            await update.message.reply_text("❌ لطفا فقط عدد وارد کنید (به گیگابایت):")
         return
 
     elif text == "📦 ساخت اشتراک":
